@@ -1796,6 +1796,33 @@ with tab_screener:
         with c6:
             st.metric("Runtime", f"{meta['elapsed']:.1f}s")
 
+        # Short Candidates (inverse Trend Template — confirmed Stage 4 breakdowns)
+        short_candidates = [r for r in all_results if r.get("technical", {}).get("passes_short_trend_template")]
+        if short_candidates:
+            short_candidates = sorted(short_candidates, key=lambda r: r["technical"].get("rs_rating", 99))
+            st.markdown(f"### 🔻 Short Candidates ({len(short_candidates)} in confirmed Stage 4 downtrend)")
+            df_short = pd.DataFrame([{
+                "Ticker": r["ticker"],
+                "Price": r["technical"].get("current_price", 0),
+                "RS": r["technical"].get("rs_rating", 0),
+                "50 SMA": r["technical"].get("sma_50", 0),
+                "150 SMA": r["technical"].get("sma_150", 0),
+                "% From High": r["technical"].get("pct_from_52wk_high", 0),
+                "Vol Trend": r["technical"].get("volume_trend", ""),
+            } for r in short_candidates])
+            st.dataframe(
+                df_short, use_container_width=True, hide_index=True,
+                column_config={
+                    "Price": st.column_config.NumberColumn("Price", format="$%.2f"),
+                    "RS": st.column_config.NumberColumn("RS", format="%d"),
+                    "50 SMA": st.column_config.NumberColumn("50 SMA", format="$%.2f"),
+                    "150 SMA": st.column_config.NumberColumn("150 SMA", format="$%.2f"),
+                    "% From High": st.column_config.NumberColumn("% From High", format="-%.1f%%"),
+                },
+                height=min(400, 46 + 35 * len(df_short)),
+            )
+            st.markdown("---")
+
         if not results:
             st.info("ℹ️ No stock passed **all** criteria — but strong candidates are listed below. "
                     "Loosen the sidebar filters (e.g. lower Min RS or EPS growth) to surface full passes.")

@@ -32,7 +32,7 @@ from screener.universe import get_universe
 from screener.screener import MinerviniScreener
 from screener.report import (
     print_banner, print_results_table, print_summary_stats,
-    save_csv, save_json
+    print_short_candidates, save_csv, save_json
 )
 
 
@@ -250,6 +250,7 @@ def main():
             )
         else:
             _print_top_near_misses(all_results, n=10)
+        print_short_candidates(all_results, max_rows=args.top)
 
     # ── Save output ──────────────────────────────────────────────────────────
     if not args.no_save and passed_results:

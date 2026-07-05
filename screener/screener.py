@@ -107,6 +107,9 @@ class MinerviniScreener:
                 tech_result.c10_rs_rating = (
                     tech_result.rs_rating >= self.config["TREND_TEMPLATE"]["rs_rating_min"]
                 )
+                tech_result.s10_rs_weak = (
+                    tech_result.rs_rating <= self.config.get("SHORT_TREND_TEMPLATE", {}).get("rs_rating_max", 30)
+                )
 
             all_tech_results[ticker] = tech_result
 

@@ -13,7 +13,7 @@ import pandas as pd
 from typing import Optional
 from dataclasses import dataclass, field
 
-from config import TREND_TEMPLATE, RS_CALCULATION, VOLUME, RISK
+from config import TREND_TEMPLATE, RS_CALCULATION, VOLUME, RISK, SHORT_TREND_TEMPLATE
 
 
 @dataclass
@@ -30,6 +30,18 @@ class TrendTemplateResult:
     c8_above_52wk_low: bool = False       # Price ≥ 125% of 52-week low
     c9_near_52wk_high: bool = False       # Price within 25% of 52-week high
     c10_rs_rating: bool = False           # RS Rating ≥ 70
+
+    # Short (inverse) Trend Template — Stage 4 breakdown candidate
+    s1_price_below_sma150: bool = False
+    s2_price_below_sma200: bool = False
+    s3_sma150_below_sma200: bool = False
+    s4_sma200_trending_down: bool = False
+    s5_sma50_below_sma150: bool = False
+    s6_sma50_below_sma200: bool = False
+    s7_price_below_sma50: bool = False
+    s8_near_52wk_low: bool = False        # within 25% of 52-week low
+    s9_far_from_52wk_high: bool = False   # ≥25% below 52-week high
+    s10_rs_weak: bool = False             # RS Rating ≤ 30
 
     # Computed values
     current_price: float = 0.0
@@ -79,6 +91,36 @@ class TrendTemplateResult:
             self.c10_rs_rating,
         ])
 
+    @property
+    def passes_short_all(self) -> bool:
+        return all([
+            self.s1_price_below_sma150,
+            self.s2_price_below_sma200,
+            self.s3_sma150_below_sma200,
+            self.s4_sma200_trending_down,
+            self.s5_sma50_below_sma150,
+            self.s6_sma50_below_sma200,
+            self.s7_price_below_sma50,
+            self.s8_near_52wk_low,
+            self.s9_far_from_52wk_high,
+            self.s10_rs_weak,
+        ])
+
+    @property
+    def short_criteria_passed(self) -> int:
+        return sum([
+            self.s1_price_below_sma150,
+            self.s2_price_below_sma200,
+            self.s3_sma150_below_sma200,
+            self.s4_sma200_trending_down,
+            self.s5_sma50_below_sma150,
+            self.s6_sma50_below_sma200,
+            self.s7_price_below_sma50,
+            self.s8_near_52wk_low,
+            self.s9_far_from_52wk_high,
+            self.s10_rs_weak,
+        ])
+
     def to_dict(self) -> dict:
         return {
             "stage": self.stage,
@@ -107,6 +149,19 @@ class TrendTemplateResult:
             "c8_above_52wk_low": self.c8_above_52wk_low,
             "c9_near_52wk_high": self.c9_near_52wk_high,
             "c10_rs_rating": self.c10_rs_rating,
+            # Short (inverse) Trend Template
+            "short_criteria_passed": f"{self.short_criteria_passed}/10",
+            "passes_short_trend_template": self.passes_short_all,
+            "s1_price_below_sma150": self.s1_price_below_sma150,
+            "s2_price_below_sma200": self.s2_price_below_sma200,
+            "s3_sma150_below_sma200": self.s3_sma150_below_sma200,
+            "s4_sma200_trending_down": self.s4_sma200_trending_down,
+            "s5_sma50_below_sma150": self.s5_sma50_below_sma150,
+            "s6_sma50_below_sma200": self.s6_sma50_below_sma200,
+            "s7_price_below_sma50": self.s7_price_below_sma50,
+            "s8_near_52wk_low": self.s8_near_52wk_low,
+            "s9_far_from_52wk_high": self.s9_far_from_52wk_high,
+            "s10_rs_weak": self.s10_rs_weak,
         }
 
 
@@ -116,10 +171,11 @@ class TechnicalAnalyzer:
     """
 
     def __init__(self, cfg_trend: dict = None, cfg_rs: dict = None,
-                 cfg_volume: dict = None):
+                 cfg_volume: dict = None, cfg_short: dict = None):
         self.cfg = cfg_trend or TREND_TEMPLATE
         self.rs_cfg = cfg_rs or RS_CALCULATION
         self.vol_cfg = cfg_volume or VOLUME
+        self.short_cfg = cfg_short or SHORT_TREND_TEMPLATE
 
     # ─────────────────────────────────────────────────────────────────────────
     # Main entry point
@@ -192,8 +248,10 @@ class TechnicalAnalyzer:
             sma200_prev = float(sma_200.dropna().iloc[-trend_days - 1])
             result.sma_200_slope = (cur_sma200 - sma200_prev) / sma200_prev
             result.c4_sma200_trending_up = cur_sma200 > sma200_prev
+            result.s4_sma200_trending_down = cur_sma200 < sma200_prev
         else:
             result.c4_sma200_trending_up = False
+            result.s4_sma200_trending_down = False
 
         # C5: 50-day SMA > 150-day SMA
         result.c5_sma50_above_sma150 = cur_sma50 > cur_sma150
@@ -210,6 +268,16 @@ class TechnicalAnalyzer:
         # C9: Price within 25% of 52-week high
         result.c9_near_52wk_high = result.pct_from_52wk_high <= self.cfg["pct_from_52wk_high"]
 
+        # ── Short (inverse) Trend Template — mirrors C1-C9 for Stage 4 breakdowns ──
+        result.s1_price_below_sma150 = current_price < cur_sma150
+        result.s2_price_below_sma200 = current_price < cur_sma200
+        result.s3_sma150_below_sma200 = cur_sma150 < cur_sma200
+        result.s5_sma50_below_sma150 = cur_sma50 < cur_sma150
+        result.s6_sma50_below_sma200 = cur_sma50 < cur_sma200
+        result.s7_price_below_sma50 = current_price < cur_sma50
+        result.s8_near_52wk_low = result.pct_above_52wk_low <= self.cfg["pct_above_52wk_low"]
+        result.s9_far_from_52wk_high = result.pct_from_52wk_high >= self.cfg["pct_from_52wk_high"]
+
         # ── Relative Strength Rating ─────────────────────────────────────────
         raw_rs = self._compute_raw_rs_score(close)
         result.rs_rating = raw_rs  # Will be percentile-ranked later if all_rs_scores provided
@@ -218,6 +286,7 @@ class TechnicalAnalyzer:
             result.rs_rating = _percentile_rank(raw_rs, all_rs_scores)
 
         result.c10_rs_rating = result.rs_rating >= self.cfg["rs_rating_min"]
+        result.s10_rs_weak = result.rs_rating <= self.short_cfg["rs_rating_max"]
 
         # ── RS Line Trend (price relative to SPY) ───────────────────────────
         if benchmark_df is not None and not benchmark_df.empty:

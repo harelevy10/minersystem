@@ -62,6 +62,7 @@ def run_analysis(ticker: str, fetcher: DataFetcher = None) -> dict:
     ).analyze(ticker, df, benchmark_df=spy, all_rs_scores=list(rs_ratings.values()))
     tech.rs_rating = rs_rating
     tech.c10_rs_rating = rs_rating >= cfg.TREND_TEMPLATE["rs_rating_min"]
+    tech.s10_rs_weak = rs_rating <= cfg.SHORT_TREND_TEMPLATE["rs_rating_max"]
 
     # ── Minervini: fundamentals + VCP (run unconditionally) ──────────────────
     fund = FundamentalAnalyzer(cfg=cfg.FUNDAMENTALS).analyze(ticker, info)
@@ -95,6 +96,7 @@ def analyze(ticker: str):
     t = res["ticker"]
     print(f"\n{'='*64}\n  MINERVINI SEPA — {t}\n{'='*64}")
     report._print_stock_detail(res["minervini"])
+    report._print_short_detail(res["minervini"])
     print(f"\n{'='*64}\n  O'NEIL CAN SLIM — {t}\n{'='*64}")
     _print_canslim_detail(t, res["df"], res["canslim"], res["base"], res["market"])
     return 0

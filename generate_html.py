@@ -87,6 +87,11 @@ def run_screen(args):
         start = time.time()
         passed, all_results = screener.run(tickers, verbose=True)
 
+    shorts = []
+    if args.method != "oneil":
+        shorts = [r for r in all_results if r.get("technical", {}).get("passes_short_trend_template")]
+        shorts.sort(key=lambda r: r.get("technical", {}).get("rs_rating", 99))
+
     elapsed = time.time() - start
     meta = {
         "method": args.method,
@@ -98,7 +103,7 @@ def run_screen(args):
         "market": (market.status if market else None),
         "market_uptrend": (market.confirmed_uptrend if market else None),
     }
-    return passed, all_results, meta
+    return passed, all_results, meta, shorts
 
 
 def load_from_csv():
@@ -176,10 +181,10 @@ def make_safe(results):
     return json.loads(json.dumps(results, default=str))
 
 
-def write_html(passed, meta, out_dir="output"):
+def write_html(passed, meta, shorts=None, out_dir="output"):
     os.makedirs(out_dir, exist_ok=True)
     payload = json.dumps(
-        {"meta": meta, "results": make_safe(passed)},
+        {"meta": meta, "results": make_safe(passed), "shorts": make_safe(shorts or [])},
         ensure_ascii=False,
     )
     html = HTML_TEMPLATE.replace("/*__DATA__*/", payload)
@@ -222,7 +227,8 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     padding:12px 18px;min-width:120px}
   .stat .n{font-size:24px;font-weight:700}
   .stat .l{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.5px}
-  .stat.green .n{color:var(--green2)} .stat.cyan .n{color:var(--cyan)}
+  .stat.green .n{color:var(--green2)} .stat.cyan .n{color:var(--cyan)} .stat.red .n{color:var(--red)}
+  .shorts-hdr{color:var(--red);text-transform:uppercase;font-size:13px;letter-spacing:.5px;margin:22px 0 10px}
   .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:0 28px 14px}
   .controls input,.controls select{background:var(--panel);color:var(--text);
     border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px}
@@ -316,13 +322,24 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
   <div class="empty" id="empty" style="display:none">No stocks match the current filters.</div>
 </div>
 
+<div class="wrap" id="shortsWrap" style="display:none">
+  <h3 class="shorts-hdr">🔻 Short Candidates — confirmed Stage 4 downtrend</h3>
+  <table id="shortsTbl">
+    <thead><tr>
+      <th class="l">Ticker</th><th>Price</th><th>RS</th><th class="c">Stage</th>
+      <th>50 SMA</th><th>150 SMA</th><th>% From High</th><th class="l">Vol Trend</th>
+    </tr></thead>
+    <tbody id="shortsRows"></tbody>
+  </table>
+</div>
+
 <div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
 
 <footer>Generated locally from cached/live data via yfinance. Educational use only — not investment advice.</footer>
 
 <script>
 const DATA = /*__DATA__*/;
-const meta = DATA.meta, ALL = DATA.results || [];
+const meta = DATA.meta, ALL = DATA.results || [], SHORTS = DATA.shorts || [];
 
 // ---------- helpers ----------
 const num = v => (v===null||v===undefined||v===""||isNaN(v))?null:Number(v);
@@ -371,8 +388,28 @@ const stats=[
   ['Runtime', (meta.elapsed||0)+'s', ''],
 ];
 if(meta.market) stats.push(['Market', meta.market, meta.market_uptrend?'green':'']);
+if(SHORTS.length) stats.push(['Short candidates', SHORTS.length, 'red']);
 document.getElementById('stats').innerHTML = stats.map(([l,n,c])=>
   `<div class="stat ${c}"><div class="n">${n}</div><div class="l">${l}</div></div>`).join('');
+
+// ---------- short candidates ----------
+if(SHORTS.length){
+  document.getElementById('shortsWrap').style.display='block';
+  document.getElementById('shortsRows').innerHTML = SHORTS.map(r=>{
+    const t=r.technical||{};
+    const st=STAGE[num(t.stage)||0]||STAGE[0];
+    return `<tr>
+      <td class="l"><span class="tick">${r.ticker}</span></td>
+      <td>${money(num(t.current_price))}</td>
+      <td class="rs neg">${(num(t.rs_rating)||0).toFixed(0)}</td>
+      <td class="c"><span class="pill ${st[1]}">${st[0]}</span></td>
+      <td>${money(num(t.sma_50))}</td>
+      <td>${money(num(t.sma_150))}</td>
+      <td>-${(num(t.pct_from_52wk_high)||0).toFixed(1)}%</td>
+      <td class="l">${t.volume_trend||''}</td>
+    </tr>`;
+  }).join('');
+}
 
 // ---------- table render ----------
 let sortKey='score', sortDir=-1;
@@ -509,10 +546,11 @@ def main():
 
     if args.from_csv:
         passed, all_results, meta = load_from_csv()
+        shorts = []
     else:
-        passed, all_results, meta = run_screen(args)
+        passed, all_results, meta, shorts = run_screen(args)
 
-    path = write_html(passed, meta)
+    path = write_html(passed, meta, shorts=shorts)
     print(f"\n  ✓ HTML report written: {path}")
     print(f"    {meta['passed']} stocks passed / {meta['screened']} screened")
 

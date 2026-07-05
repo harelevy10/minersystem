@@ -159,6 +159,33 @@ def print_results_table(results: list[dict], max_rows: int = 50,
             _print_stock_detail(r)
 
 
+def print_short_candidates(all_results: list[dict], max_rows: int = 20):
+    """Print stocks that pass the inverse (short) Trend Template — Stage 4 breakdowns."""
+    shorts = [r for r in all_results if r.get("technical", {}).get("passes_short_trend_template")]
+    if not shorts:
+        return
+    shorts.sort(key=lambda r: r.get("technical", {}).get("rs_rating", 99))
+
+    print(bold(f"  SHORT CANDIDATES ({len(shorts)} in confirmed Stage 4 downtrend)"))
+    print(f"  {'─'*72}")
+    headers = ["#", "Ticker", "Price", "RS", "50 SMA", "150 SMA", "% From High", "Vol Trend"]
+    rows = []
+    for i, r in enumerate(shorts[:max_rows], 1):
+        t = r.get("technical", {})
+        rows.append([
+            i, r.get("ticker", ""),
+            fmt_price(t.get("current_price")),
+            fmt_rating(t.get("rs_rating")),
+            fmt_price(t.get("sma_50")),
+            fmt_price(t.get("sma_150")),
+            f"-{t.get('pct_from_52wk_high', 0):.1f}%",
+            _vol_trend_str(t.get("volume_trend")),
+        ])
+    print(tabulate(rows, headers=headers, tablefmt="simple",
+                   colalign=("right", "left", "right", "right", "right", "right", "right", "left")))
+    print()
+
+
 def _stage_str(stage: int) -> str:
     stage_colors = {1: yellow, 2: green, 3: yellow, 4: red}
     fn = stage_colors.get(stage, dim)
@@ -226,6 +253,28 @@ def _print_stock_detail(r: dict):
           f"Acc/Dist Ratio: {t.get('acc_dist_ratio', 0):.2f}")
     print(f"  RS Line Trending Up: {check(t.get('rs_line_trending_up', False))}")
     print(f"  Score: {bold(str(round(r.get('score', 0))))}/100")
+
+
+def _print_short_detail(r: dict):
+    """Print the inverse (short) Trend Template breakdown for a single stock."""
+    t = r.get("technical", {})
+    print(f"\n  {bold('SHORT TREND TEMPLATE')}  ({t.get('short_criteria_passed', '0/10')})")
+    criteria = [
+        (f"S1  Price < 150 SMA  (${t.get('sma_150', 0):.2f})", t.get("s1_price_below_sma150")),
+        (f"S2  Price < 200 SMA  (${t.get('sma_200', 0):.2f})", t.get("s2_price_below_sma200")),
+        ("S3  150 SMA < 200 SMA", t.get("s3_sma150_below_sma200")),
+        ("S4  200 SMA trending down ≥ 1 month", t.get("s4_sma200_trending_down")),
+        ("S5  50 SMA < 150 SMA", t.get("s5_sma50_below_sma150")),
+        ("S6  50 SMA < 200 SMA", t.get("s6_sma50_below_sma200")),
+        (f"S7  Price < 50 SMA  (${t.get('sma_50', 0):.2f})", t.get("s7_price_below_sma50")),
+        (f"S8  Within 25% of 52wk low  ({t.get('pct_above_52wk_low', 0):.1f}% above low)", t.get("s8_near_52wk_low")),
+        (f"S9  ≥25% below 52wk high  ({t.get('pct_from_52wk_high', 0):.1f}% off)", t.get("s9_far_from_52wk_high")),
+        (f"S10 RS Rating ≤ 30  ({t.get('rs_rating', 0):.0f})", t.get("s10_rs_weak")),
+    ]
+    for label, passed in criteria:
+        print(f"      {check(passed)}  {label}")
+    verdict = green("SHORT CANDIDATE") if t.get("passes_short_trend_template") else dim("not a short candidate")
+    print(f"\n  Verdict: {verdict}")
 
 
 def _vol_trend_str(trend: str) -> str:
