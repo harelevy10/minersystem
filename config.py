@@ -38,6 +38,15 @@ TREND_TEMPLATE = {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
+# SHORT TREND TEMPLATE  (Stage 4 breakdown candidates)
+# Mirror image of TREND_TEMPLATE: price below all SMAs, MAs declining,
+# near 52wk low, weak RS. Reuses TREND_TEMPLATE's SMA windows and % thresholds.
+# ─────────────────────────────────────────────────────────────────────────────
+SHORT_TREND_TEMPLATE = {
+    "rs_rating_max": 30,                # RS Rating <= 30 marks a laggard
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 # FUNDAMENTAL CRITERIA
 # ─────────────────────────────────────────────────────────────────────────────
 FUNDAMENTALS = {
