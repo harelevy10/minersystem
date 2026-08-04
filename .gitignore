@@ -2,5 +2,9 @@ __pycache__/
 *.pyc
 .DS_Store
 cache/
-output/
+# ignore all of output/ EXCEPT the daily scan history the web app reads
+output/*
+!output/scan_history/
+output/scan_history/*
+!output/scan_history/*.json
 .claude/
