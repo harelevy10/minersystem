@@ -457,7 +457,30 @@ st.markdown(f"""
 # ─────────────────────────────────────────────────────────────────────────────
 
 if "results" not in st.session_state:
+    # Show the newest scan committed by the daily GitHub Action. Yahoo blocks
+    # Streamlit Cloud's shared IPs, so live screening there returns all-zero
+    # rows — the committed scan is the only real data the hosted app has.
+    _latest = _hist_list()
     st.session_state.results = None
+    st.session_state.all_results = None
+    st.session_state.last_run = None
+    if _latest:
+        try:
+            _scan = _hist_load(_latest[0][0])
+            st.session_state.results = _scan.get("results", [])
+            # history keeps only passers; shorts are stored alongside them
+            st.session_state.all_results = (_scan.get("results", [])
+                                            + _scan.get("shorts", []))
+            st.session_state.last_run = {
+                "universe":  _scan.get("universe", ""),
+                "elapsed":   0,
+                "total":     _scan.get("n_screened", 0),
+                "timestamp": _scan.get("timestamp", "")[11:16],
+                "from_history": _scan.get("date", ""),
+                "n_trend_pass": _scan.get("n_trend_pass"),
+            }
+        except Exception:
+            pass
 if "all_results" not in st.session_state:
     st.session_state.all_results = None
 if "last_run" not in st.session_state:
@@ -564,11 +587,24 @@ if run_btn:
         "total":     n_screened,
         "timestamp": datetime.now().strftime("%H:%M:%S"),
     }
-    # Persist scan to history
-    try:
-        _hist_save(passed, universe, n_screened)
-    except Exception:
-        pass
+    # Persist scan to history — but only if the data feed actually worked.
+    # Where Yahoo blocks the host (e.g. Streamlit Cloud) every fetch returns
+    # None and the run yields all-zero rows; saving that would poison both the
+    # startup view and the day-over-day diff.
+    priced = sum(1 for r in all_results
+                 if (r.get("technical") or {}).get("current_price", 0) > 0)
+    if priced >= len(all_results) / 2:
+        try:
+            _hist_save(passed, universe, n_screened)
+        except Exception:
+            pass
+    else:
+        st.warning(
+            f"Data feed returned prices for only {priced}/{len(all_results)} "
+            f"stocks — this run was not saved to history. "
+            f"Yahoo blocks some hosting providers; the daily scan runs on "
+            f"GitHub Actions instead."
+        )
     st.session_state.selected_ticker = None
     st.session_state.portfolio_size = portfolio_size
     st.session_state.risk_per_trade_pct = risk_per_trade_pct
@@ -1781,8 +1817,18 @@ with tab_screener:
         all_results = st.session_state.all_results
         meta = st.session_state.last_run
 
+        if meta.get("from_history"):
+            st.caption(
+                f"📅 Showing the daily scan from **{meta['from_history']}** "
+                f"({meta.get('timestamp','')}) — updated automatically each "
+                f"weekday after the US close."
+            )
+
         # Summary metrics
-        tech_pass = sum(1 for r in all_results if r.get("technical", {}).get("passes_trend_template"))
+        tech_pass = meta.get("n_trend_pass")
+        if tech_pass is None:
+            tech_pass = sum(1 for r in all_results
+                            if r.get("technical", {}).get("passes_trend_template"))
         vcp_count = sum(1 for r in results if r.get("vcp", {}).get("vcp_detected"))
         near_pivot_count = sum(1 for r in results if r.get("vcp", {}).get("vcp_near_pivot"))
 
@@ -1798,7 +1844,10 @@ with tab_screener:
         with c5:
             st.metric("Near Pivot", near_pivot_count, help="Within 5% of pivot entry")
         with c6:
-            st.metric("Runtime", f"{meta['elapsed']:.1f}s")
+            if meta.get("from_history"):
+                st.metric("Scan Date", meta["from_history"][5:])   # MM-DD
+            else:
+                st.metric("Runtime", f"{meta['elapsed']:.1f}s")
 
         # Short Candidates (inverse Trend Template — confirmed Stage 4 breakdowns)
         short_candidates = [r for r in all_results if r.get("technical", {}).get("passes_short_trend_template")]
