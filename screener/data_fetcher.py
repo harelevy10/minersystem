@@ -50,7 +50,13 @@ class DataFetcher:
             time.sleep(self.api_delay)
             t = yf.Ticker(ticker)
             df = t.history(period=period, auto_adjust=True)
-            if df is None or df.empty or len(df) < 50:
+            if df is None or df.empty:
+                return None
+            # yfinance emits a placeholder bar for the in-progress/most recent
+            # day: Volume set, OHLC NaN. It becomes `current_price` and makes
+            # every criterion fail, so drop rows with no Close.
+            df = df[df["Close"].notna()]
+            if len(df) < 50:
                 return None
             df.index = pd.to_datetime(df.index).tz_localize(None)
             self._save_cache(cache_key, df)
