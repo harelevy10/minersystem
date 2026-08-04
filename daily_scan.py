@@ -32,6 +32,9 @@ def main(universe: str = "sp500") -> str:
     passed, all_results = MinerviniScreener(config).run(tickers, verbose=False)
     n_screened = len([r for r in all_results if r.get("technical")])
 
+    def _tech(r, key):
+        return r.get("technical", {}).get(key)
+
     os.makedirs(HISTORY_DIR, exist_ok=True)
     ts = datetime.now()
     fpath = os.path.join(HISTORY_DIR, ts.strftime("scan_%Y-%m-%d.json"))
@@ -43,6 +46,12 @@ def main(universe: str = "sp500") -> str:
             "n_screened": n_screened,
             "n_passed": len(passed),
             "results": passed,
+            # the hosted dashboard can't re-screen (Yahoo blocks Streamlit
+            # Cloud IPs), so persist what it would otherwise recompute
+            "n_trend_pass": sum(1 for r in all_results
+                                if _tech(r, "passes_trend_template")),
+            "shorts": [r for r in all_results
+                       if _tech(r, "passes_short_trend_template")],
         }, fh)
 
     print(f"{ts:%Y-%m-%d}: {len(passed)} passed / {n_screened} screened -> {fpath}")
