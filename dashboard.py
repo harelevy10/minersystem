@@ -655,7 +655,8 @@ def _build_trading_plan(r: dict, portfolio_size: float = 100_000,
         stop_raw = float(v.get("vcp_stop_price", pivot * 0.92))
     else:
         # No VCP: use 52-week high as pivot, 50-day SMA as stop guide
-        pivot = float(t.get("week_52_high", price * 1.02))
+        # `or` (not a .get default) — incomplete data gives 0/None, not a missing key
+        pivot = float(t.get("week_52_high") or price * 1.02)
         stop_raw = float(sma50 * 0.99) if sma50 > 0 else price * 0.92
 
     buy_zone_high = round(pivot * 1.05, 2)      # Don't chase more than 5% above pivot
@@ -690,7 +691,9 @@ def _build_trading_plan(r: dict, portfolio_size: float = 100_000,
     position_pct_portfolio = round(position_value / portfolio_size * 100, 1) if portfolio_size > 0 else 0
 
     # ── Trade Status ─────────────────────────────────────────────────────────
-    if in_buy_zone:
+    if pivot <= 0 or price <= 0:
+        status = "NO DATA"          # incomplete feed — never show this as buyable
+    elif in_buy_zone:
         status = "BUY ZONE"
     elif price < pivot:
         pct_away = round((pivot - price) / pivot * 100, 1)
@@ -730,9 +733,10 @@ def _build_trading_plan(r: dict, portfolio_size: float = 100_000,
         )
     if vol_trend == "accumulation":
         thesis_parts.append(f"<b>Accumulation confirmed</b> — up-day volume exceeds down-day volume (A/D ratio {acc_ratio:.2f}x).")
+    gain_pct = round((target_1 - pivot) / pivot * 100) if pivot > 0 else 0
     thesis_parts.append(
         f"<b>Risk/Reward = {rr_ratio:.1f}:1</b> — "
-        f"risking ${risk_per_share:.2f}/share ({risk_pct_entry}%) for a potential gain to ${target_1:.2f} (+{round((target_1-pivot)/pivot*100):.0f}%)."
+        f"risking ${risk_per_share:.2f}/share ({risk_pct_entry}%) for a potential gain to ${target_1:.2f} (+{gain_pct:.0f}%)."
     )
 
     # Exit triggers
